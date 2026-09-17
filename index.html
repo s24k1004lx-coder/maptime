@@ -417,8 +417,36 @@ function loadTrackGeometry(){
   // 藤沢→鎌倉の実線路ネットワーク上で各駅間の最短経路をつないだ実測ジオメトリ。
   // 駅間を直線補間していないため、カーブや腰越付近の道路併用区間も元データの線形を保持する。
   trackPath = TRACK_FULL;
+  snapStationsToTrack();
   drawStations();
   statusEl.textContent += "・線路ジオメトリ: OpenStreetMapの江ノ島電鉄線路データを全15駅間で連結（直線補間なし）";
+}
+
+/* 駅マーカーを線路ポリライン(trackPath)上の最も近い点にスナップする安全策。
+   駅座標(実座標取得時のOSM駅ノード、または概算fallback)は線路の中心線と
+   厳密には一致しないことがある（駅の代表点が改札やホーム端にずれている等）。
+   「藤沢→鎌倉の順序を後退しない」制約付きで最短距離の点を探すことで、
+   マーカーが線路から浮いて見えることを防ぐ。 */
+function snapStationsToTrack(){
+  if(!trackPath || trackPath.length < 2) return;
+  let searchStart = 0;
+  STATIONS.forEach(s=>{
+    let bestDist = Infinity, bestPt = null, bestIdx = searchStart;
+    for(let i = searchStart; i < trackPath.length - 1; i++){
+      const a = trackPath[i], b = trackPath[i+1];
+      const ax = a[1], ay = a[0], bx = b[1], by = b[0];
+      const px = s.lon, py = s.lat;
+      const dx = bx - ax, dy = by - ay;
+      const len2 = dx*dx + dy*dy;
+      let t = len2 > 0 ? ((px-ax)*dx + (py-ay)*dy) / len2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const cx = ax + dx*t, cy = ay + dy*t;
+      const d = haversine(py, px, cy, cx);
+      if(d < bestDist){ bestDist = d; bestPt = [cy, cx]; bestIdx = i; }
+    }
+    if(bestPt && bestDist < 60){ s.lat = bestPt[0]; s.lon = bestPt[1]; searchStart = bestIdx; }
+  });
+  computeDistances();
 }
 
 /* ================= Trip generation from REAL terminal times ================= */
